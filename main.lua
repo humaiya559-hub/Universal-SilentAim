@@ -154,7 +154,11 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
 end))
 
 -- Linoria UI Library Integration (hosted in repository)
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/humaiya559-hub/Universal-SilentAim/main/Library.lua"))()
+local libSource = game:HttpGet("https://raw.githubusercontent.com/humaiya559-hub/Universal-SilentAim/main/Library.lua")
+if string.byte(libSource, 1) == 239 and string.byte(libSource, 2) == 187 and string.byte(libSource, 3) == 191 then
+    libSource = string.sub(libSource, 4)
+end
+local Library = loadstring(libSource)()
 
 local Window = Library:CreateWindow({
     Title = "Universal Silent Aim",
