@@ -3340,7 +3340,6 @@ function Library:CreateWindow(...)
             });
 
             Library:Create('UIListLayout', {
-                Padding = UDim.new(0, 8);
                 FillDirection = Enum.FillDirection.Vertical;
                 SortOrder = Enum.SortOrder.LayoutOrder;
                 Parent = Container;
@@ -3355,7 +3354,7 @@ function Library:CreateWindow(...)
                     end;
                 end;
 
-                BoxOuter.Size = UDim2.new(1, 0, 0, 24 + Size + 2 + 2);
+                BoxOuter.Size = UDim2.new(1, 0, 0, 24 + Size + 6);
             end;
 
             Groupbox.Container = Container;
@@ -3519,7 +3518,7 @@ function Library:CreateWindow(...)
                         end;
                     end;
 
-                    BoxOuter.Size = UDim2.new(1, 0, 0, 24 + Size + 2 + 2);
+                    BoxOuter.Size = UDim2.new(1, 0, 0, 24 + Size + 6);
                 end;
 
                 Button.InputBegan:Connect(function(Input)
