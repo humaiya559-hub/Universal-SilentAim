@@ -19,8 +19,8 @@ local Configuration = {
     TeamCheck = false,
     TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
     RaycastMethod = "Automatic", -- "Automatic", "Raycast", "Spherecast", "Blockcast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "FindPartOnRayWithCollisionGroup", "ViewportPointToRay", "ScreenPointToRay", "Mouse"
-    Include = { Character = true, Camera = true },
-    Origin = { Camera = true },
+    Include = { Character = true },
+    Origin = { Camera = true, Character = true },
     ShowFOV = true,
     FOVRadius = 120,
     ShowTracer = false
@@ -558,6 +558,132 @@ renderSteppedConn = RunService.RenderStepped:Connect(function()
     updateEsp()
 end)
 
+-- Automatic method resolution state and helpers
+local detectedMethod = nil
+local lastRaycastTime = 0
+local MethodStatusLabel = nil
+
+local function setDetectedMethod(methodName)
+    if detectedMethod ~= methodName then
+        detectedMethod = methodName
+        if MethodStatusLabel then
+            pcall(function()
+                MethodStatusLabel:SetText("Auto Method: " .. methodName)
+            end)
+        end
+    end
+end
+
+-- Checks if ray origin is associated with the local player (camera, character, or equipped tool)
+local function isPlayerOrigin(origin, currentCam)
+    if typeof(origin) ~= "Vector3" then return false end
+
+    local camPos = currentCam.CFrame.Position
+    if (origin - camPos).Magnitude <= 15 then
+        return true
+    end
+
+    local character = LocalPlayer.Character
+    if character then
+        local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("Head")
+        if rootPart and (origin - rootPart.Position).Magnitude <= 30 then
+            return true
+        end
+        local tool = character:FindFirstChildWhichIsA("Tool")
+        if tool then
+            local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+            if handle and (origin - handle.Position).Magnitude <= 20 then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- Filter out character ground checks (downward rays with short distance)
+local function isGroundRay(origin, direction)
+    if typeof(direction) == "Vector3" and direction.Magnitude < 15 and direction.Unit.Y < -0.85 then
+        return true
+    end
+    return false
+end
+
+-- Validate Origin configuration
+local function passesOriginCheck(origin, currentCam)
+    local originOptions = Configuration.Origin
+    if not originOptions or not next(originOptions) then
+        return isPlayerOrigin(origin, currentCam)
+    end
+
+    if isSelectionActive(originOptions, "Camera") then
+        local camPos = currentCam.CFrame.Position
+        if (origin - camPos).Magnitude <= 15 then
+            return true
+        end
+    end
+
+    if isSelectionActive(originOptions, "Character") then
+        local character = LocalPlayer.Character
+        if character then
+            local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("Head")
+            if rootPart and (origin - rootPart.Position).Magnitude <= 30 then
+                return true
+            end
+        end
+    end
+
+    return isPlayerOrigin(origin, currentCam)
+end
+
+-- Validate Include (ignore list) configuration
+local function passesIncludeCheck(params, currentCam)
+    local includeOptions = Configuration.Include
+    if not includeOptions or not next(includeOptions) then
+        return true
+    end
+
+    local filterList = nil
+    local filterType = nil
+
+    if typeof(params) == "RaycastParams" then
+        filterList = params.FilterDescendantsInstances
+        filterType = params.FilterType
+    elseif type(params) == "table" then
+        filterList = params
+    end
+
+    if not filterList or type(filterList) ~= "table" then
+        return true
+    end
+
+    if filterType and filterType == Enum.RaycastFilterType.Include then
+        return true
+    end
+
+    local character = LocalPlayer.Character
+    if character and isSelectionActive(includeOptions, "Character") then
+        local found = table.find(filterList, character)
+        if not found then
+            for _, item in ipairs(filterList) do
+                if typeof(item) == "Instance" and (item == character or item:IsDescendantOf(character)) then
+                    found = true
+                    break
+                end
+            end
+        end
+        if found then
+            return true
+        end
+    end
+
+    if isSelectionActive(includeOptions, "Camera") and table.find(filterList, currentCam) then
+        return true
+    end
+
+    return true
+end
+
 -- Metamethod Hook: __namecall
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -570,125 +696,135 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 
     local currentCam = workspace.CurrentCamera or Camera
     local isAuto = Configuration.RaycastMethod == "Automatic"
+    local selectedMethod = Configuration.RaycastMethod
 
     if self == workspace then
         local args = {...}
-        if (isAuto or Configuration.RaycastMethod == "Raycast") and method == "Raycast" then
-            local origin = args[1]
-            if typeof(origin) == "Vector3" then
-                local originOptions = Configuration.Origin
-                local includeOptions = Configuration.Include
-                if originOptions and next(originOptions) and isSelectionActive(originOptions, "Camera") then
-                    local camPos = currentCam.CFrame.Position
-                    if (origin - camPos).Magnitude >= 0.1 and origin ~= camPos then
-                        setnamecallmethod(method)
-                        return oldNamecall(self, ...)
-                    end
-                end
-                if includeOptions and next(includeOptions) then
-                    local params = args[3]
-                    local ignoredList = typeof(params) == "RaycastParams" and params.FilterDescendantsInstances
-                    if ignoredList then
-                        if isSelectionActive(includeOptions, "Camera") and not table.find(ignoredList, currentCam) then
-                            setnamecallmethod(method)
-                            return oldNamecall(self, ...)
-                        end
-                        local character = LocalPlayer.Character
-                        if character and isSelectionActive(includeOptions, "Character") and not table.find(ignoredList, character) then
-                            setnamecallmethod(method)
-                            return oldNamecall(self, ...)
-                        end
-                    end
-                end
 
-                local target = getClosestTargetPart()
-                if target then
-                    if Configuration.BulletPenetration then
-                        local dir = (target.Position - origin).Unit
-                        args[1] = target.Position - (dir * 0.2)
-                        args[2] = dir * 10
-                    else
-                        args[2] = (target.Position - origin).Unit * 1000
-                    end
-                    setnamecallmethod(method)
-                    return oldNamecall(self, unpack(args))
-                end
-            end
-        elseif (isAuto or Configuration.RaycastMethod == "Spherecast") and method == "Spherecast" then
+        -- Workspace:Raycast
+        if (isAuto or selectedMethod == "Raycast") and method == "Raycast" then
             local origin = args[1]
-            if typeof(origin) == "Vector3" then
-                local target = getClosestTargetPart()
-                if target then
-                    if Configuration.BulletPenetration then
-                        local dir = (target.Position - origin).Unit
-                        args[1] = target.Position - (dir * 0.2)
-                        args[3] = dir * 10
-                    else
-                        args[3] = (target.Position - origin).Unit * 1000
+            local direction = args[2]
+            local params = args[3]
+
+            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                if not isGroundRay(origin, direction) and passesOriginCheck(origin, currentCam) and passesIncludeCheck(params, currentCam) then
+                    lastRaycastTime = os.clock()
+                    if isAuto then
+                        setDetectedMethod("Raycast")
                     end
-                    setnamecallmethod(method)
-                    return oldNamecall(self, unpack(args))
+
+                    local target = getClosestTargetPart()
+                    if target then
+                        if Configuration.BulletPenetration then
+                            local dir = (target.Position - origin).Unit
+                            args[1] = target.Position - (dir * 0.2)
+                            args[2] = dir * 10
+                        else
+                            args[2] = (target.Position - origin).Unit * 1000
+                        end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    end
                 end
             end
-        elseif (isAuto or Configuration.RaycastMethod == "Blockcast") and method == "Blockcast" then
+
+        -- Workspace:Spherecast
+        elseif (isAuto or selectedMethod == "Spherecast") and method == "Spherecast" then
+            local origin = args[1]
+            local radius = args[2]
+            local direction = args[3]
+            local params = args[4]
+
+            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                if not isGroundRay(origin, direction) and passesOriginCheck(origin, currentCam) and passesIncludeCheck(params, currentCam) then
+                    lastRaycastTime = os.clock()
+                    if isAuto then
+                        setDetectedMethod("Spherecast")
+                    end
+
+                    local target = getClosestTargetPart()
+                    if target then
+                        if Configuration.BulletPenetration then
+                            local dir = (target.Position - origin).Unit
+                            args[1] = target.Position - (dir * 0.2)
+                            args[3] = dir * 10
+                        else
+                            args[3] = (target.Position - origin).Unit * 1000
+                        end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    end
+                end
+            end
+
+        -- Workspace:Blockcast
+        elseif (isAuto or selectedMethod == "Blockcast") and method == "Blockcast" then
             local cf = args[1]
-            if typeof(cf) == "CFrame" then
-                local target = getClosestTargetPart()
-                if target then
-                    local origin = cf.Position
-                    if Configuration.BulletPenetration then
-                        local dir = (target.Position - origin).Unit
-                        args[1] = CFrame.new(target.Position - (dir * 0.2), target.Position)
-                        args[3] = dir * 10
-                    else
-                        args[3] = (target.Position - origin).Unit * 1000
+            local size = args[2]
+            local direction = args[3]
+            local params = args[4]
+
+            if typeof(cf) == "CFrame" and typeof(direction) == "Vector3" then
+                local origin = cf.Position
+                if not isGroundRay(origin, direction) and passesOriginCheck(origin, currentCam) and passesIncludeCheck(params, currentCam) then
+                    lastRaycastTime = os.clock()
+                    if isAuto then
+                        setDetectedMethod("Blockcast")
                     end
-                    setnamecallmethod(method)
-                    return oldNamecall(self, unpack(args))
+
+                    local target = getClosestTargetPart()
+                    if target then
+                        if Configuration.BulletPenetration then
+                            local dir = (target.Position - origin).Unit
+                            args[1] = CFrame.new(target.Position - (dir * 0.2), target.Position)
+                            args[3] = dir * 10
+                        else
+                            args[3] = (target.Position - origin).Unit * 1000
+                        end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    end
                 end
             end
-        elseif (isAuto or Configuration.RaycastMethod == method) and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "FindPartOnRayWithCollisionGroup") then
+
+        -- Workspace:FindPartOnRay methods
+        elseif (isAuto or selectedMethod == method) and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "FindPartOnRayWithCollisionGroup") then
             local ray = args[1]
             if typeof(ray) == "Ray" then
-                local originOptions = Configuration.Origin
-                local includeOptions = Configuration.Include
-                if originOptions and next(originOptions) and isSelectionActive(originOptions, "Camera") then
-                    local camPos = currentCam.CFrame.Position
-                    if (ray.Origin - camPos).Magnitude >= 0.1 and ray.Origin ~= camPos then
-                        setnamecallmethod(method)
-                        return oldNamecall(self, ...)
-                    end
-                end
-                if includeOptions and next(includeOptions) and method == "FindPartOnRayWithIgnoreList" then
-                    local ignoredList = args[2]
-                    if type(ignoredList) == "table" then
-                        if isSelectionActive(includeOptions, "Camera") and not table.find(ignoredList, currentCam) then
-                            setnamecallmethod(method)
-                            return oldNamecall(self, ...)
-                        end
-                        local character = LocalPlayer.Character
-                        if character and isSelectionActive(includeOptions, "Character") and not table.find(ignoredList, character) then
-                            setnamecallmethod(method)
-                            return oldNamecall(self, ...)
-                        end
-                    end
-                end
+                local origin = ray.Origin
+                local direction = ray.Direction
+                local ignoreList = (method == "FindPartOnRayWithIgnoreList" and args[2]) or nil
 
-                local target = getClosestTargetPart()
-                if target then
-                    if Configuration.BulletPenetration then
-                        local dir = (target.Position - ray.Origin).Unit
-                        args[1] = Ray.new(target.Position - (dir * 0.2), dir * 10)
-                    else
-                        args[1] = Ray.new(ray.Origin, (target.Position - ray.Origin).Unit * 1000)
+                if not isGroundRay(origin, direction) and passesOriginCheck(origin, currentCam) and passesIncludeCheck(ignoreList, currentCam) then
+                    lastRaycastTime = os.clock()
+                    if isAuto then
+                        setDetectedMethod(method)
                     end
-                    setnamecallmethod(method)
-                    return oldNamecall(self, unpack(args))
+
+                    local target = getClosestTargetPart()
+                    if target then
+                        if Configuration.BulletPenetration then
+                            local dir = (target.Position - origin).Unit
+                            args[1] = Ray.new(target.Position - (dir * 0.2), dir * 10)
+                        else
+                            args[1] = Ray.new(origin, (target.Position - origin).Unit * 1000)
+                        end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    end
                 end
             end
         end
+
     elseif self == currentCam then
-        if (isAuto or Configuration.RaycastMethod == "ViewportPointToRay") and method == "ViewportPointToRay" then
+        -- Camera:ViewportPointToRay
+        if (isAuto or selectedMethod == "ViewportPointToRay") and method == "ViewportPointToRay" then
+            lastRaycastTime = os.clock()
+            if isAuto and (detectedMethod == nil or detectedMethod == "Mouse") then
+                setDetectedMethod("ViewportPointToRay")
+            end
+
             local target = getClosestTargetPart()
             if target then
                 local camPos = currentCam.CFrame.Position
@@ -699,7 +835,14 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     return Ray.new(camPos, (target.Position - camPos).Unit * 1000)
                 end
             end
-        elseif (isAuto or Configuration.RaycastMethod == "ScreenPointToRay") and method == "ScreenPointToRay" then
+
+        -- Camera:ScreenPointToRay
+        elseif (isAuto or selectedMethod == "ScreenPointToRay") and method == "ScreenPointToRay" then
+            lastRaycastTime = os.clock()
+            if isAuto and (detectedMethod == nil or detectedMethod == "Mouse") then
+                setDetectedMethod("ScreenPointToRay")
+            end
+
             local target = getClosestTargetPart()
             if target then
                 local camPos = currentCam.CFrame.Position
@@ -710,21 +853,32 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     return Ray.new(camPos, (target.Position - camPos).Unit * 1000)
                 end
             end
-        elseif (isAuto or Configuration.RaycastMethod == "Raycast") and method == "Raycast" then
+
+        -- Camera:Raycast
+        elseif (isAuto or selectedMethod == "Raycast") and method == "Raycast" then
             local args = {...}
             local origin = args[1]
-            if typeof(origin) == "Vector3" then
-                local target = getClosestTargetPart()
-                if target then
-                    if Configuration.BulletPenetration then
-                        local dir = (target.Position - origin).Unit
-                        args[1] = target.Position - (dir * 0.2)
-                        args[2] = dir * 10
-                    else
-                        args[2] = (target.Position - origin).Unit * 1000
+            local direction = args[2]
+
+            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                if not isGroundRay(origin, direction) then
+                    lastRaycastTime = os.clock()
+                    if isAuto then
+                        setDetectedMethod("Raycast")
                     end
-                    setnamecallmethod(method)
-                    return oldNamecall(self, unpack(args))
+
+                    local target = getClosestTargetPart()
+                    if target then
+                        if Configuration.BulletPenetration then
+                            local dir = (target.Position - origin).Unit
+                            args[1] = target.Position - (dir * 0.2)
+                            args[2] = dir * 10
+                        else
+                            args[2] = (target.Position - origin).Unit * 1000
+                        end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    end
                 end
             end
         end
@@ -737,16 +891,40 @@ end))
 -- Metamethod Hook: __index
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
+    if not Configuration.Enabled or checkcaller() then
+        return oldIndex(self, index)
+    end
+
     local isAuto = Configuration.RaycastMethod == "Automatic"
-    if Configuration.Enabled and not checkcaller() and (isAuto or Configuration.RaycastMethod == "Mouse") and self == Mouse then
-        local target = getClosestTargetPart()
-        if target then
-            if index == "Hit" or index == "hit" then
-                return target.CFrame
-            elseif index == "Target" or index == "target" then
-                return target
-            elseif index == "UnitRay" then
-                return Ray.new(self.Origin, (target.Position - self.Origin).Unit)
+    local isMouse = Configuration.RaycastMethod == "Mouse"
+
+    if (isAuto or isMouse) and self == Mouse then
+        local allowMouse = isMouse
+
+        -- In Automatic mode, only engage Mouse if no active raycast method is handling weapon firing
+        if isAuto then
+            if detectedMethod == "Mouse" then
+                allowMouse = true
+            elseif (detectedMethod == nil or detectedMethod == "ViewportPointToRay" or detectedMethod == "ScreenPointToRay") and (os.clock() - lastRaycastTime) > 3 then
+                local char = LocalPlayer.Character
+                local tool = char and char:FindFirstChildWhichIsA("Tool")
+                if tool then
+                    setDetectedMethod("Mouse")
+                    allowMouse = true
+                end
+            end
+        end
+
+        if allowMouse then
+            local target = getClosestTargetPart()
+            if target then
+                if index == "Hit" or index == "hit" then
+                    return target.CFrame
+                elseif index == "Target" or index == "target" then
+                    return target
+                elseif index == "UnitRay" then
+                    return Ray.new(self.Origin, (target.Position - self.Origin).Unit)
+                end
             end
         end
     end
@@ -825,8 +1003,20 @@ SilentGroup:AddDropdown("RaycastMethodDropdown", {
     Tooltip = "Engine raycast/query method to intercept",
     Callback = function(Value)
         Configuration.RaycastMethod = Value
+        if Value == "Automatic" then
+            detectedMethod = nil
+            if MethodStatusLabel then
+                MethodStatusLabel:SetText("Auto Method: Searching...")
+            end
+        else
+            if MethodStatusLabel then
+                MethodStatusLabel:SetText("Active Method: " .. Value)
+            end
+        end
     end
 })
+
+MethodStatusLabel = SilentGroup:AddLabel("Auto Method: Searching...")
 
 SilentGroup:AddDropdown("IncludeDropdown", {
     AllowNull = true,
@@ -845,8 +1035,8 @@ SilentGroup:AddDropdown("OriginDropdown", {
     Multi = true,
     Text = "Origin",
     Default = Configuration.Origin,
-    Values = {"Camera"},
-    Tooltip = "Sets the origin of the bullet/ray",
+    Values = {"Camera", "Character"},
+    Tooltip = "Sets the allowed origin of the bullet/ray",
     Callback = function(Value)
         Configuration.Origin = normalizeSelection(Value)
     end
