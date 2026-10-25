@@ -29,7 +29,6 @@ local Configuration = {
 -- Visuals Configuration
 local VisualConfig = {
     Enabled = false,
-    TeamCheck = false,
     MaxDistance = 2000,
     Boxes = true,
     BoxStyle = "2D Box", -- "2D Box", "Corner Box"
@@ -39,10 +38,7 @@ local VisualConfig = {
     UseDisplayName = false,
     Distance = true,
     DistanceColor = Color3.fromRGB(200, 200, 200),
-    HealthBar = true,
-    DynamicHealth = true,
-    HealthBarColor = Color3.fromRGB(0, 255, 120),
-    HealthText = false
+    HealthBar = true
 }
 
 local function normalizeSelection(selection)
@@ -106,7 +102,7 @@ local tracerLine = Drawing.new("Line")
 tracerLine.Thickness = 1
 tracerLine.Visible = false
 tracerLine.Transparency = 1
-tracerLine.Color = Color3.fromRGB(255, 255, 255)
+tracerLine.Color = fovCircle.Color
 
 -- ESP Drawings Container
 local espObjects = {}
@@ -134,7 +130,6 @@ local function createEsp(player)
         HealthOutline = Drawing.new("Square"),
         HealthBg = Drawing.new("Square"),
         HealthBar = Drawing.new("Square"),
-        HealthText = Drawing.new("Text"),
 
         -- Text labels
         Name = Drawing.new("Text"),
@@ -192,18 +187,9 @@ local function createEsp(player)
 
     drawings.HealthBar.Thickness = 1
     drawings.HealthBar.Filled = true
-    drawings.HealthBar.Color = VisualConfig.HealthBarColor
+    drawings.HealthBar.Color = Color3.fromRGB(0, 255, 120)
     drawings.HealthBar.Visible = false
     drawings.HealthBar.ZIndex = 3
-
-    drawings.HealthText.Size = 11
-    drawings.HealthText.Font = fontUI
-    drawings.HealthText.Center = true
-    drawings.HealthText.Outline = true
-    drawings.HealthText.OutlineColor = Color3.fromRGB(0, 0, 0)
-    drawings.HealthText.Color = Color3.fromRGB(255, 255, 255)
-    drawings.HealthText.Visible = false
-    drawings.HealthText.ZIndex = 4
 
     -- Name label configuration
     drawings.Name.Size = 13
@@ -242,7 +228,6 @@ local function removeEsp(player)
             drawings.HealthOutline:Remove()
             drawings.HealthBg:Remove()
             drawings.HealthBar:Remove()
-            drawings.HealthText:Remove()
             drawings.Name:Remove()
             drawings.Distance:Remove()
         end)
@@ -261,7 +246,6 @@ local function setEspVisible(drawings, state)
     drawings.HealthOutline.Visible = state
     drawings.HealthBg.Visible = state
     drawings.HealthBar.Visible = state
-    drawings.HealthText.Visible = state
     drawings.Name.Visible = state
     drawings.Distance.Visible = state
 end
@@ -284,7 +268,8 @@ local function updateEsp()
             continue
         end
 
-        if VisualConfig.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+        -- Sync with Silent Aim Team Check
+        if Configuration.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
             setEspVisible(drawings, false)
             continue
         end
@@ -389,7 +374,7 @@ local function updateEsp()
             end
         end
 
-        -- Health bar rendering
+        -- Health bar rendering (automatic dynamic color gradient)
         if VisualConfig.HealthBar then
             local health = math.clamp(humanoid.Health, 0, humanoid.MaxHealth)
             local maxHealth = humanoid.MaxHealth > 0 and humanoid.MaxHealth or 100
@@ -415,29 +400,17 @@ local function updateEsp()
             drawings.HealthBar.Size = Vector2.new(barWidth, filledHeight)
             drawings.HealthBar.Visible = filledHeight > 0
 
-            local barCol = VisualConfig.HealthBarColor
-            if VisualConfig.DynamicHealth then
-                if healthPercent > 0.5 then
-                    barCol = Color3.fromRGB(255, 210, 0):Lerp(Color3.fromRGB(0, 255, 120), (healthPercent - 0.5) * 2)
-                else
-                    barCol = Color3.fromRGB(255, 50, 50):Lerp(Color3.fromRGB(255, 210, 0), healthPercent * 2)
-                end
+            local barCol
+            if healthPercent > 0.5 then
+                barCol = Color3.fromRGB(255, 210, 0):Lerp(Color3.fromRGB(0, 255, 120), (healthPercent - 0.5) * 2)
+            else
+                barCol = Color3.fromRGB(255, 50, 50):Lerp(Color3.fromRGB(255, 210, 0), healthPercent * 2)
             end
             drawings.HealthBar.Color = barCol
-
-            if VisualConfig.HealthText and healthPercent < 1 then
-                drawings.HealthText.Text = tostring(math.floor(health))
-                drawings.HealthText.Position = Vector2.new(barX - 14, math.clamp(filledY - 4, barY, barY + barHeight - 10))
-                drawings.HealthText.Color = barCol
-                drawings.HealthText.Visible = true
-            else
-                drawings.HealthText.Visible = false
-            end
         else
             drawings.HealthOutline.Visible = false
             drawings.HealthBg.Visible = false
             drawings.HealthBar.Visible = false
-            drawings.HealthText.Visible = false
         end
 
         -- Name label rendering
@@ -535,13 +508,14 @@ renderSteppedConn = RunService.RenderStepped:Connect(function()
     fovCircle.Radius = Configuration.FOVRadius
     fovCircle.Position = mousePos
 
-    -- Tracer line update
+    -- Tracer line update (synced with FOV color)
     if Configuration.ShowTracer and Configuration.Enabled then
         local target = getClosestTargetPart()
         if target then
             local screenPoint, onScreen = WorldToViewportPoint(currentCam, target.Position)
             if onScreen then
                 tracerLine.Visible = true
+                tracerLine.Color = fovCircle.Color
                 tracerLine.From = mousePos
                 tracerLine.To = Vector2.new(screenPoint.X, screenPoint.Y)
             else
@@ -1046,7 +1020,7 @@ SilentGroup:AddDropdown("OriginDropdown", {
 ChecksGroup:AddToggle("TeamCheckToggle", {
     Text = "Team Check",
     Default = Configuration.TeamCheck,
-    Tooltip = "Prevents targeting teammates",
+    Tooltip = "Prevents targeting and rendering teammates",
     Callback = function(Value)
         Configuration.TeamCheck = Value
     end
@@ -1067,6 +1041,7 @@ FOVGroup:AddToggle("ShowFOVToggle", {
     Title = "FOV Color",
     Callback = function(Value)
         fovCircle.Color = Value
+        tracerLine.Color = Value
     end
 })
 
@@ -1088,12 +1063,6 @@ FOVGroup:AddToggle("ShowTracerToggle", {
     Tooltip = "Renders a tracer line from mouse cursor to the current target",
     Callback = function(Value)
         Configuration.ShowTracer = Value
-    end
-}):AddColorPicker("TracerColorPicker", {
-    Default = Color3.fromRGB(255, 255, 255),
-    Title = "Tracer Color",
-    Callback = function(Value)
-        tracerLine.Color = Value
     end
 })
 
@@ -1123,12 +1092,6 @@ ESPBox:AddToggle("ESPBoxToggle", {
     Callback = function(Value)
         VisualConfig.Boxes = Value
     end
-}):AddColorPicker("ESPBoxColor", {
-    Default = Color3.fromRGB(255, 255, 255),
-    Title = "Box Color",
-    Callback = function(Value)
-        VisualConfig.BoxColor = Value
-    end
 })
 
 ESPBox:AddDropdown("ESPBoxStyleDropdown", {
@@ -1149,12 +1112,6 @@ ESPBox:AddToggle("ESPNameToggle", {
     Callback = function(Value)
         VisualConfig.Names = Value
     end
-}):AddColorPicker("ESPNameColor", {
-    Default = Color3.fromRGB(255, 255, 255),
-    Title = "Name Color",
-    Callback = function(Value)
-        VisualConfig.NameColor = Value
-    end
 })
 
 ESPBox:AddToggle("ESPDistanceToggle", {
@@ -1163,12 +1120,6 @@ ESPBox:AddToggle("ESPDistanceToggle", {
     Tooltip = "Renders distance in studs to players below bounding boxes",
     Callback = function(Value)
         VisualConfig.Distance = Value
-    end
-}):AddColorPicker("ESPDistanceColor", {
-    Default = Color3.fromRGB(200, 200, 200),
-    Title = "Distance Color",
-    Callback = function(Value)
-        VisualConfig.DistanceColor = Value
     end
 })
 
@@ -1179,25 +1130,10 @@ ESPBox:AddToggle("ESPHealthBarToggle", {
     Callback = function(Value)
         VisualConfig.HealthBar = Value
     end
-}):AddColorPicker("ESPHealthColor", {
-    Default = Color3.fromRGB(0, 255, 120),
-    Title = "Health Bar Color",
-    Callback = function(Value)
-        VisualConfig.HealthBarColor = Value
-    end
 })
 
 -- Visuals Tab: Settings Right Groupbox
 local ESPOptionsBox = Tabs.Visuals:AddRightGroupbox("Settings")
-
-ESPOptionsBox:AddToggle("ESPTeamCheck", {
-    Text = "Team Check",
-    Default = VisualConfig.TeamCheck,
-    Tooltip = "Hides ESP for teammates",
-    Callback = function(Value)
-        VisualConfig.TeamCheck = Value
-    end
-})
 
 ESPOptionsBox:AddToggle("ESPDisplayName", {
     Text = "Use Display Name",
@@ -1205,24 +1141,6 @@ ESPOptionsBox:AddToggle("ESPDisplayName", {
     Tooltip = "Shows display names instead of usernames",
     Callback = function(Value)
         VisualConfig.UseDisplayName = Value
-    end
-})
-
-ESPOptionsBox:AddToggle("ESPDynamicHealth", {
-    Text = "Dynamic Health Color",
-    Default = VisualConfig.DynamicHealth,
-    Tooltip = "Smoothly shifts bar color from green to red based on player health",
-    Callback = function(Value)
-        VisualConfig.DynamicHealth = Value
-    end
-})
-
-ESPOptionsBox:AddToggle("ESPHealthText", {
-    Text = "Show Health Number",
-    Default = VisualConfig.HealthText,
-    Tooltip = "Displays numerical health value beside the health bar",
-    Callback = function(Value)
-        VisualConfig.HealthText = Value
     end
 })
 
