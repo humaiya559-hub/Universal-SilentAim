@@ -15,13 +15,14 @@ local GetMouseLocation = UserInputService.GetMouseLocation
 -- Configuration
 local Configuration = {
     Enabled = true,
-    TargetPart = "Head", -- "Head" or "HumanoidRootPart"
+    TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
     RaycastMethod = "Raycast", -- "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"
     ShowFOV = true,
-    FOVRadius = 120
+    FOVRadius = 120,
+    ShowTracer = false
 }
 
--- Visual FOV circle
+-- Visual FOV circle using Drawing API
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 1
 fovCircle.NumSides = 64
@@ -31,13 +32,14 @@ fovCircle.Visible = Configuration.ShowFOV and Configuration.Enabled
 fovCircle.Transparency = 1
 fovCircle.Color = Color3.fromRGB(255, 255, 255)
 
-RunService.RenderStepped:Connect(function()
-    fovCircle.Visible = Configuration.ShowFOV and Configuration.Enabled
-    fovCircle.Radius = Configuration.FOVRadius
-    fovCircle.Position = GetMouseLocation(UserInputService)
-end)
+-- Visual Tracer line using Drawing API
+local tracerLine = Drawing.new("Line")
+tracerLine.Thickness = 1
+tracerLine.Visible = false
+tracerLine.Transparency = 1
+tracerLine.Color = Color3.fromRGB(255, 255, 255)
 
--- Target selection
+-- Target selection: locates valid target part closest to screen cursor within FOV radius
 local function getClosestTargetPart()
     local mousePos = GetMouseLocation(UserInputService)
     local closestDistance = Configuration.FOVRadius
@@ -46,7 +48,12 @@ local function getClosestTargetPart()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            local targetPart = player.Character:FindFirstChild(Configuration.TargetPart)
+            local partName = Configuration.TargetPart
+            if partName == "Random" then
+                local validParts = {"Head", "HumanoidRootPart"}
+                partName = validParts[math.random(1, #validParts)]
+            end
+            local targetPart = player.Character:FindFirstChild(partName)
 
             if humanoid and humanoid.Health > 0 and targetPart then
                 local screenPoint, onScreen = WorldToViewportPoint(Camera, targetPart.Position)
@@ -63,6 +70,35 @@ local function getClosestTargetPart()
 
     return selectedPart
 end
+
+-- Update visuals per frame
+RunService.RenderStepped:Connect(function()
+    local mousePos = GetMouseLocation(UserInputService)
+    
+    -- FOV circle update
+    fovCircle.Visible = Configuration.ShowFOV and Configuration.Enabled
+    fovCircle.Radius = Configuration.FOVRadius
+    fovCircle.Position = mousePos
+
+    -- Tracer line update
+    if Configuration.ShowTracer and Configuration.Enabled then
+        local target = getClosestTargetPart()
+        if target then
+            local screenPoint, onScreen = WorldToViewportPoint(Camera, target.Position)
+            if onScreen then
+                tracerLine.Visible = true
+                tracerLine.From = mousePos
+                tracerLine.To = Vector2.new(screenPoint.X, screenPoint.Y)
+            else
+                tracerLine.Visible = false
+            end
+        else
+            tracerLine.Visible = false
+        end
+    else
+        tracerLine.Visible = false
+    end
+end)
 
 -- Metamethod Hook: __namecall
 local oldNamecall
@@ -117,9 +153,8 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
     return oldIndex(self, index)
 end))
 
--- Linoria UI Library Integration
-local repo = "https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+-- Linoria UI Library Integration (hosted in repository)
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/humaiya559-hub/Universal-SilentAim/main/Library.lua"))()
 
 local Window = Library:CreateWindow({
     Title = "Universal Silent Aim",
@@ -130,12 +165,14 @@ local Window = Library:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab("Main")
+    Main = Window:AddTab("Main"),
+    Settings = Window:AddTab("Settings")
 }
 
-local LeftGroup = Tabs.Main:AddLeftGroupbox("Targeting")
+-- Silent Groupbox
+local SilentGroup = Tabs.Main:AddLeftGroupbox("Silent")
 
-LeftGroup:AddToggle("SilentAimEnabled", {
+SilentGroup:AddToggle("SilentAimEnabled", {
     Text = "Enabled",
     Default = Configuration.Enabled,
     Tooltip = "Toggles universal silent aim",
@@ -145,13 +182,14 @@ LeftGroup:AddToggle("SilentAimEnabled", {
 }):AddKeyPicker("SilentAimKeyPicker", {
     Default = "RightAlt",
     SyncToggleState = true,
+    Modes = {"Always", "Toggle", "Hold"},
     Mode = "Toggle",
     Text = "Silent Aim",
     NoUI = false
 })
 
-LeftGroup:AddDropdown("TargetPartDropdown", {
-    Values = {"Head", "HumanoidRootPart"},
+SilentGroup:AddDropdown("TargetPartDropdown", {
+    Values = {"Head", "HumanoidRootPart", "Random"},
     Default = 1,
     Multi = false,
     Text = "Target Part",
@@ -161,7 +199,7 @@ LeftGroup:AddDropdown("TargetPartDropdown", {
     end
 })
 
-LeftGroup:AddDropdown("RaycastMethodDropdown", {
+SilentGroup:AddDropdown("RaycastMethodDropdown", {
     Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"},
     Default = 1,
     Multi = false,
@@ -172,10 +210,11 @@ LeftGroup:AddDropdown("RaycastMethodDropdown", {
     end
 })
 
-local RightGroup = Tabs.Main:AddRightGroupbox("Visuals")
+-- Field of View Groupbox
+local FOVGroup = Tabs.Main:AddRightGroupbox("Field of View")
 
-RightGroup:AddToggle("ShowFOVToggle", {
-    Text = "Show FOV Circle",
+FOVGroup:AddToggle("ShowFOVToggle", {
+    Text = "Show FOV",
     Default = Configuration.ShowFOV,
     Tooltip = "Renders the visual FOV radius indicator",
     Callback = function(Value)
@@ -189,8 +228,8 @@ RightGroup:AddToggle("ShowFOVToggle", {
     end
 })
 
-RightGroup:AddSlider("FOVRadiusSlider", {
-    Text = "FOV Radius",
+FOVGroup:AddSlider("FOVRadiusSlider", {
+    Text = "Radius",
     Default = Configuration.FOVRadius,
     Min = 10,
     Max = 600,
@@ -200,5 +239,36 @@ RightGroup:AddSlider("FOVRadiusSlider", {
         Configuration.FOVRadius = Value
     end
 })
+
+FOVGroup:AddToggle("ShowTracerToggle", {
+    Text = "Show Tracer On Target",
+    Default = Configuration.ShowTracer,
+    Tooltip = "Renders a tracer line from mouse cursor to the current target",
+    Callback = function(Value)
+        Configuration.ShowTracer = Value
+    end
+}):AddColorPicker("TracerColorPicker", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Title = "Tracer Color",
+    Callback = function(Value)
+        tracerLine.Color = Value
+    end
+})
+
+-- Settings Tab
+local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
+
+MenuBox:AddButton("Unload", function()
+    pcall(function() fovCircle:Remove() end)
+    pcall(function() tracerLine:Remove() end)
+    Library:Unload()
+end)
+
+MenuBox:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
+    Default = "RightShift",
+    NoUI = true,
+    Text = "Menu keybind"
+})
+Library.ToggleKeybind = Options.MenuKeybind
 
 Library:Notify("Universal Silent Aim loaded successfully.")
