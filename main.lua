@@ -26,6 +26,25 @@ local Configuration = {
     ShowTracer = false
 }
 
+-- Visuals Configuration
+local VisualConfig = {
+    Enabled = false,
+    TeamCheck = false,
+    MaxDistance = 2000,
+    Boxes = true,
+    BoxStyle = "2D Box", -- "2D Box", "Corner Box"
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    Names = true,
+    NameColor = Color3.fromRGB(255, 255, 255),
+    UseDisplayName = false,
+    Distance = true,
+    DistanceColor = Color3.fromRGB(200, 200, 200),
+    HealthBar = true,
+    DynamicHealth = true,
+    HealthBarColor = Color3.fromRGB(0, 255, 120),
+    HealthText = false
+}
+
 local function normalizeSelection(selection)
     if not selection then
         return {}
@@ -89,11 +108,382 @@ tracerLine.Visible = false
 tracerLine.Transparency = 1
 tracerLine.Color = Color3.fromRGB(255, 255, 255)
 
+-- ESP Drawings Container
+local espObjects = {}
+local playerConnections = {}
+
+local fontUI = 2
+if Drawing and Drawing.Fonts and Drawing.Fonts.UI then
+    fontUI = Drawing.Fonts.UI
+end
+
+local function createEsp(player)
+    if player == LocalPlayer or espObjects[player] then return end
+
+    local drawings = {
+        -- 2D Box (outer outline, colored core, inner inline)
+        BoxOutline = Drawing.new("Square"),
+        Box = Drawing.new("Square"),
+        BoxInline = Drawing.new("Square"),
+
+        -- Corner Box (8 black outline lines, 8 colored foreground lines)
+        CornerOutlines = {},
+        CornerLines = {},
+
+        -- Health bar
+        HealthOutline = Drawing.new("Square"),
+        HealthBg = Drawing.new("Square"),
+        HealthBar = Drawing.new("Square"),
+        HealthText = Drawing.new("Text"),
+
+        -- Text labels
+        Name = Drawing.new("Text"),
+        Distance = Drawing.new("Text")
+    }
+
+    -- 2D Box configuration
+    drawings.BoxOutline.Thickness = 1
+    drawings.BoxOutline.Filled = false
+    drawings.BoxOutline.Color = Color3.fromRGB(0, 0, 0)
+    drawings.BoxOutline.Visible = false
+    drawings.BoxOutline.ZIndex = 1
+
+    drawings.Box.Thickness = 1
+    drawings.Box.Filled = false
+    drawings.Box.Color = VisualConfig.BoxColor
+    drawings.Box.Visible = false
+    drawings.Box.ZIndex = 2
+
+    drawings.BoxInline.Thickness = 1
+    drawings.BoxInline.Filled = false
+    drawings.BoxInline.Color = Color3.fromRGB(0, 0, 0)
+    drawings.BoxInline.Visible = false
+    drawings.BoxInline.ZIndex = 1
+
+    -- Corner Box configuration
+    for i = 1, 8 do
+        local outLine = Drawing.new("Line")
+        outLine.Thickness = 3
+        outLine.Color = Color3.fromRGB(0, 0, 0)
+        outLine.Visible = false
+        outLine.ZIndex = 1
+        drawings.CornerOutlines[i] = outLine
+
+        local inLine = Drawing.new("Line")
+        inLine.Thickness = 1
+        inLine.Color = VisualConfig.BoxColor
+        inLine.Visible = false
+        inLine.ZIndex = 2
+        drawings.CornerLines[i] = inLine
+    end
+
+    -- Health bar configuration
+    drawings.HealthOutline.Thickness = 1
+    drawings.HealthOutline.Filled = true
+    drawings.HealthOutline.Color = Color3.fromRGB(0, 0, 0)
+    drawings.HealthOutline.Visible = false
+    drawings.HealthOutline.ZIndex = 1
+
+    drawings.HealthBg.Thickness = 1
+    drawings.HealthBg.Filled = true
+    drawings.HealthBg.Color = Color3.fromRGB(35, 35, 35)
+    drawings.HealthBg.Visible = false
+    drawings.HealthBg.ZIndex = 2
+
+    drawings.HealthBar.Thickness = 1
+    drawings.HealthBar.Filled = true
+    drawings.HealthBar.Color = VisualConfig.HealthBarColor
+    drawings.HealthBar.Visible = false
+    drawings.HealthBar.ZIndex = 3
+
+    drawings.HealthText.Size = 11
+    drawings.HealthText.Font = fontUI
+    drawings.HealthText.Center = true
+    drawings.HealthText.Outline = true
+    drawings.HealthText.OutlineColor = Color3.fromRGB(0, 0, 0)
+    drawings.HealthText.Color = Color3.fromRGB(255, 255, 255)
+    drawings.HealthText.Visible = false
+    drawings.HealthText.ZIndex = 4
+
+    -- Name label configuration
+    drawings.Name.Size = 13
+    drawings.Name.Font = fontUI
+    drawings.Name.Center = true
+    drawings.Name.Outline = true
+    drawings.Name.OutlineColor = Color3.fromRGB(0, 0, 0)
+    drawings.Name.Color = VisualConfig.NameColor
+    drawings.Name.Visible = false
+    drawings.Name.ZIndex = 4
+
+    -- Distance label configuration
+    drawings.Distance.Size = 11
+    drawings.Distance.Font = fontUI
+    drawings.Distance.Center = true
+    drawings.Distance.Outline = true
+    drawings.Distance.OutlineColor = Color3.fromRGB(0, 0, 0)
+    drawings.Distance.Color = VisualConfig.DistanceColor
+    drawings.Distance.Visible = false
+    drawings.Distance.ZIndex = 4
+
+    espObjects[player] = drawings
+end
+
+local function removeEsp(player)
+    local drawings = espObjects[player]
+    if drawings then
+        pcall(function()
+            drawings.BoxOutline:Remove()
+            drawings.Box:Remove()
+            drawings.BoxInline:Remove()
+            for i = 1, 8 do
+                drawings.CornerOutlines[i]:Remove()
+                drawings.CornerLines[i]:Remove()
+            end
+            drawings.HealthOutline:Remove()
+            drawings.HealthBg:Remove()
+            drawings.HealthBar:Remove()
+            drawings.HealthText:Remove()
+            drawings.Name:Remove()
+            drawings.Distance:Remove()
+        end)
+        espObjects[player] = nil
+    end
+end
+
+local function setEspVisible(drawings, state)
+    drawings.BoxOutline.Visible = state
+    drawings.Box.Visible = state
+    drawings.BoxInline.Visible = state
+    for i = 1, 8 do
+        drawings.CornerOutlines[i].Visible = state
+        drawings.CornerLines[i].Visible = state
+    end
+    drawings.HealthOutline.Visible = state
+    drawings.HealthBg.Visible = state
+    drawings.HealthBar.Visible = state
+    drawings.HealthText.Visible = state
+    drawings.Name.Visible = state
+    drawings.Distance.Visible = state
+end
+
+local function updateEsp()
+    if not uiLoaded or not VisualConfig.Enabled then
+        for _, drawings in pairs(espObjects) do
+            setEspVisible(drawings, false)
+        end
+        return
+    end
+
+    local currentCam = workspace.CurrentCamera or Camera
+    local camPos = currentCam.CFrame.Position
+
+    for player, drawings in pairs(espObjects) do
+        local character = player.Character
+        if not character then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        if VisualConfig.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+        local head = character:FindFirstChild("Head")
+
+        if not humanoid or humanoid.Health <= 0 or not rootPart then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        local rootPos = rootPart.Position
+        local distance = (camPos - rootPos).Magnitude
+        if distance > VisualConfig.MaxDistance then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        local headPos = head and head.Position or (rootPos + Vector3.new(0, 2, 0))
+        local topWorld = headPos + Vector3.new(0, (head and head.Size.Y * 0.5 or 1) + 0.5, 0)
+        local bottomWorld = rootPos - Vector3.new(0, 3, 0)
+
+        local topScreen, topOn = currentCam:WorldToViewportPoint(topWorld)
+        local bottomScreen, bottomOn = currentCam:WorldToViewportPoint(bottomWorld)
+
+        if (not topOn and not bottomOn) or topScreen.Z <= 0 then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        local boxHeight = math.abs(bottomScreen.Y - topScreen.Y)
+        if boxHeight < 4 or boxHeight > 4000 then
+            setEspVisible(drawings, false)
+            continue
+        end
+
+        local boxWidth = math.clamp(math.floor(boxHeight * 0.65), 6, 2000)
+        local boxX = math.floor(topScreen.X - boxWidth / 2)
+        local boxY = math.floor(math.min(topScreen.Y, bottomScreen.Y))
+
+        -- Box ESP rendering
+        if VisualConfig.Boxes then
+            if VisualConfig.BoxStyle == "2D Box" then
+                for i = 1, 8 do
+                    drawings.CornerOutlines[i].Visible = false
+                    drawings.CornerLines[i].Visible = false
+                end
+
+                drawings.BoxOutline.Position = Vector2.new(boxX - 1, boxY - 1)
+                drawings.BoxOutline.Size = Vector2.new(boxWidth + 2, boxHeight + 2)
+                drawings.BoxOutline.Visible = true
+
+                drawings.Box.Position = Vector2.new(boxX, boxY)
+                drawings.Box.Size = Vector2.new(boxWidth, boxHeight)
+                drawings.Box.Color = VisualConfig.BoxColor
+                drawings.Box.Visible = true
+
+                drawings.BoxInline.Position = Vector2.new(boxX + 1, boxY + 1)
+                drawings.BoxInline.Size = Vector2.new(boxWidth - 2, boxHeight - 2)
+                drawings.BoxInline.Visible = true
+            elseif VisualConfig.BoxStyle == "Corner Box" then
+                drawings.BoxOutline.Visible = false
+                drawings.Box.Visible = false
+                drawings.BoxInline.Visible = false
+
+                local clX = math.clamp(math.floor(boxWidth / 4), 3, 20)
+                local clY = math.clamp(math.floor(boxHeight / 4), 3, 20)
+
+                local pts = {
+                    {Vector2.new(boxX, boxY), Vector2.new(boxX + clX, boxY)},
+                    {Vector2.new(boxX, boxY), Vector2.new(boxX, boxY + clY)},
+                    {Vector2.new(boxX + boxWidth, boxY), Vector2.new(boxX + boxWidth - clX, boxY)},
+                    {Vector2.new(boxX + boxWidth, boxY), Vector2.new(boxX + boxWidth, boxY + clY)},
+                    {Vector2.new(boxX, boxY + boxHeight), Vector2.new(boxX + clX, boxY + boxHeight)},
+                    {Vector2.new(boxX, boxY + boxHeight), Vector2.new(boxX, boxY + boxHeight - clY)},
+                    {Vector2.new(boxX + boxWidth, boxY + boxHeight), Vector2.new(boxX + boxWidth - clX, boxY + boxHeight)},
+                    {Vector2.new(boxX + boxWidth, boxY + boxHeight), Vector2.new(boxX + boxWidth, boxY + boxHeight - clY)}
+                }
+
+                for i = 1, 8 do
+                    local outLine = drawings.CornerOutlines[i]
+                    outLine.From = pts[i][1]
+                    outLine.To = pts[i][2]
+                    outLine.Visible = true
+
+                    local inLine = drawings.CornerLines[i]
+                    inLine.From = pts[i][1]
+                    inLine.To = pts[i][2]
+                    inLine.Color = VisualConfig.BoxColor
+                    inLine.Visible = true
+                end
+            end
+        else
+            drawings.BoxOutline.Visible = false
+            drawings.Box.Visible = false
+            drawings.BoxInline.Visible = false
+            for i = 1, 8 do
+                drawings.CornerOutlines[i].Visible = false
+                drawings.CornerLines[i].Visible = false
+            end
+        end
+
+        -- Health bar rendering
+        if VisualConfig.HealthBar then
+            local health = math.clamp(humanoid.Health, 0, humanoid.MaxHealth)
+            local maxHealth = humanoid.MaxHealth > 0 and humanoid.MaxHealth or 100
+            local healthPercent = math.clamp(health / maxHealth, 0, 1)
+
+            local barWidth = 3
+            local barHeight = boxHeight
+            local barX = boxX - 6
+            local barY = boxY
+
+            drawings.HealthOutline.Position = Vector2.new(barX - 1, barY - 1)
+            drawings.HealthOutline.Size = Vector2.new(barWidth + 2, barHeight + 2)
+            drawings.HealthOutline.Visible = true
+
+            drawings.HealthBg.Position = Vector2.new(barX, barY)
+            drawings.HealthBg.Size = Vector2.new(barWidth, barHeight)
+            drawings.HealthBg.Visible = true
+
+            local filledHeight = math.floor(barHeight * healthPercent)
+            local filledY = barY + (barHeight - filledHeight)
+
+            drawings.HealthBar.Position = Vector2.new(barX, filledY)
+            drawings.HealthBar.Size = Vector2.new(barWidth, filledHeight)
+            drawings.HealthBar.Visible = filledHeight > 0
+
+            local barCol = VisualConfig.HealthBarColor
+            if VisualConfig.DynamicHealth then
+                if healthPercent > 0.5 then
+                    barCol = Color3.fromRGB(255, 210, 0):Lerp(Color3.fromRGB(0, 255, 120), (healthPercent - 0.5) * 2)
+                else
+                    barCol = Color3.fromRGB(255, 50, 50):Lerp(Color3.fromRGB(255, 210, 0), healthPercent * 2)
+                end
+            end
+            drawings.HealthBar.Color = barCol
+
+            if VisualConfig.HealthText and healthPercent < 1 then
+                drawings.HealthText.Text = tostring(math.floor(health))
+                drawings.HealthText.Position = Vector2.new(barX - 14, math.clamp(filledY - 4, barY, barY + barHeight - 10))
+                drawings.HealthText.Color = barCol
+                drawings.HealthText.Visible = true
+            else
+                drawings.HealthText.Visible = false
+            end
+        else
+            drawings.HealthOutline.Visible = false
+            drawings.HealthBg.Visible = false
+            drawings.HealthBar.Visible = false
+            drawings.HealthText.Visible = false
+        end
+
+        -- Name label rendering
+        if VisualConfig.Names then
+            local displayName = VisualConfig.UseDisplayName and player.DisplayName or player.Name
+            drawings.Name.Text = displayName
+            drawings.Name.Position = Vector2.new(boxX + boxWidth / 2, boxY - 14)
+            drawings.Name.Color = VisualConfig.NameColor
+            drawings.Name.Visible = true
+        else
+            drawings.Name.Visible = false
+        end
+
+        -- Distance label rendering
+        if VisualConfig.Distance then
+            drawings.Distance.Text = string.format("[%d studs]", math.floor(distance))
+            drawings.Distance.Position = Vector2.new(boxX + boxWidth / 2, boxY + boxHeight + 2)
+            drawings.Distance.Color = VisualConfig.DistanceColor
+            drawings.Distance.Visible = true
+        else
+            drawings.Distance.Visible = false
+        end
+    end
+end
+
+-- Initialize ESP for current players
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        createEsp(player)
+    end
+end
+
+table.insert(playerConnections, Players.PlayerAdded:Connect(function(player)
+    createEsp(player)
+end))
+
+table.insert(playerConnections, Players.PlayerRemoving:Connect(function(player)
+    removeEsp(player)
+end))
+
 -- Target selection: locates valid target part closest to screen cursor within FOV radius
 local function getClosestTargetPart()
     local mousePos = GetMouseLocation(UserInputService)
     local closestDistance = Configuration.FOVRadius
     local selectedPart = nil
+    local currentCam = workspace.CurrentCamera or Camera
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
@@ -110,7 +500,7 @@ local function getClosestTargetPart()
             local targetPart = player.Character:FindFirstChild(partName)
 
             if humanoid and humanoid.Health > 0 and targetPart then
-                local screenPoint, onScreen = WorldToViewportPoint(Camera, targetPart.Position)
+                local screenPoint, onScreen = WorldToViewportPoint(currentCam, targetPart.Position)
                 if onScreen then
                     local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePos).Magnitude
                     if distance <= closestDistance then
@@ -126,15 +516,20 @@ local function getClosestTargetPart()
 end
 
 -- Update visuals per frame
-RunService.RenderStepped:Connect(function()
+local renderSteppedConn
+renderSteppedConn = RunService.RenderStepped:Connect(function()
     if not uiLoaded then
         fovCircle.Visible = false
         tracerLine.Visible = false
+        for _, drawings in pairs(espObjects) do
+            setEspVisible(drawings, false)
+        end
         return
     end
 
     local mousePos = GetMouseLocation(UserInputService)
-    
+    local currentCam = workspace.CurrentCamera or Camera
+
     -- FOV circle update
     fovCircle.Visible = Configuration.ShowFOV and Configuration.Enabled
     fovCircle.Radius = Configuration.FOVRadius
@@ -144,7 +539,7 @@ RunService.RenderStepped:Connect(function()
     if Configuration.ShowTracer and Configuration.Enabled then
         local target = getClosestTargetPart()
         if target then
-            local screenPoint, onScreen = WorldToViewportPoint(Camera, target.Position)
+            local screenPoint, onScreen = WorldToViewportPoint(currentCam, target.Position)
             if onScreen then
                 tracerLine.Visible = true
                 tracerLine.From = mousePos
@@ -158,6 +553,9 @@ RunService.RenderStepped:Connect(function()
     else
         tracerLine.Visible = false
     end
+
+    -- Visuals ESP update
+    updateEsp()
 end)
 
 -- Metamethod Hook: __namecall
@@ -373,10 +771,11 @@ local Window = Library:CreateWindow({
 
 local Tabs = {
     Main = Window:AddTab("Main"),
+    Visuals = Window:AddTab("Visuals"),
     Settings = Window:AddTab("Settings")
 }
 
--- Silent Tabbox (with Silent and Checks subtabs)
+-- Main Tab: Silent Tabbox (with Silent and Checks subtabs)
 local SilentTabbox = Tabs.Main:AddLeftTabbox("Silent")
 local SilentGroup = SilentTabbox:AddTab("Silent")
 local ChecksGroup = SilentTabbox:AddTab("Checks")
@@ -508,6 +907,147 @@ FOVGroup:AddToggle("ShowTracerToggle", {
     end
 })
 
+-- Visuals Tab: ESP Left Groupbox
+local ESPBox = Tabs.Visuals:AddLeftGroupbox("ESP")
+
+ESPBox:AddToggle("ESPEnabled", {
+    Text = "Enabled",
+    Default = VisualConfig.Enabled,
+    Tooltip = "Toggles player ESP visuals",
+    Callback = function(Value)
+        VisualConfig.Enabled = Value
+    end
+}):AddKeyPicker("ESPKeyPicker", {
+    Default = "None",
+    SyncToggleState = true,
+    Modes = {"Always", "Toggle", "Hold"},
+    Mode = "Toggle",
+    Text = "ESP",
+    NoUI = false
+})
+
+ESPBox:AddToggle("ESPBoxToggle", {
+    Text = "Box ESP",
+    Default = VisualConfig.Boxes,
+    Tooltip = "Renders bounding boxes around players",
+    Callback = function(Value)
+        VisualConfig.Boxes = Value
+    end
+}):AddColorPicker("ESPBoxColor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Title = "Box Color",
+    Callback = function(Value)
+        VisualConfig.BoxColor = Value
+    end
+})
+
+ESPBox:AddDropdown("ESPBoxStyleDropdown", {
+    Values = {"2D Box", "Corner Box"},
+    Default = 1,
+    Multi = false,
+    Text = "Box Style",
+    Tooltip = "Rendering style for player bounding box",
+    Callback = function(Value)
+        VisualConfig.BoxStyle = Value
+    end
+})
+
+ESPBox:AddToggle("ESPNameToggle", {
+    Text = "Name ESP",
+    Default = VisualConfig.Names,
+    Tooltip = "Renders player names above bounding boxes",
+    Callback = function(Value)
+        VisualConfig.Names = Value
+    end
+}):AddColorPicker("ESPNameColor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Title = "Name Color",
+    Callback = function(Value)
+        VisualConfig.NameColor = Value
+    end
+})
+
+ESPBox:AddToggle("ESPDistanceToggle", {
+    Text = "Distance ESP",
+    Default = VisualConfig.Distance,
+    Tooltip = "Renders distance in studs to players below bounding boxes",
+    Callback = function(Value)
+        VisualConfig.Distance = Value
+    end
+}):AddColorPicker("ESPDistanceColor", {
+    Default = Color3.fromRGB(200, 200, 200),
+    Title = "Distance Color",
+    Callback = function(Value)
+        VisualConfig.DistanceColor = Value
+    end
+})
+
+ESPBox:AddToggle("ESPHealthBarToggle", {
+    Text = "Health Bar",
+    Default = VisualConfig.HealthBar,
+    Tooltip = "Renders dynamic health bars beside player bounding boxes",
+    Callback = function(Value)
+        VisualConfig.HealthBar = Value
+    end
+}):AddColorPicker("ESPHealthColor", {
+    Default = Color3.fromRGB(0, 255, 120),
+    Title = "Health Bar Color",
+    Callback = function(Value)
+        VisualConfig.HealthBarColor = Value
+    end
+})
+
+-- Visuals Tab: Settings Right Groupbox
+local ESPOptionsBox = Tabs.Visuals:AddRightGroupbox("Settings")
+
+ESPOptionsBox:AddToggle("ESPTeamCheck", {
+    Text = "Team Check",
+    Default = VisualConfig.TeamCheck,
+    Tooltip = "Hides ESP for teammates",
+    Callback = function(Value)
+        VisualConfig.TeamCheck = Value
+    end
+})
+
+ESPOptionsBox:AddToggle("ESPDisplayName", {
+    Text = "Use Display Name",
+    Default = VisualConfig.UseDisplayName,
+    Tooltip = "Shows display names instead of usernames",
+    Callback = function(Value)
+        VisualConfig.UseDisplayName = Value
+    end
+})
+
+ESPOptionsBox:AddToggle("ESPDynamicHealth", {
+    Text = "Dynamic Health Color",
+    Default = VisualConfig.DynamicHealth,
+    Tooltip = "Smoothly shifts bar color from green to red based on player health",
+    Callback = function(Value)
+        VisualConfig.DynamicHealth = Value
+    end
+})
+
+ESPOptionsBox:AddToggle("ESPHealthText", {
+    Text = "Show Health Number",
+    Default = VisualConfig.HealthText,
+    Tooltip = "Displays numerical health value beside the health bar",
+    Callback = function(Value)
+        VisualConfig.HealthText = Value
+    end
+})
+
+ESPOptionsBox:AddSlider("ESPMaxDistance", {
+    Text = "Max Distance",
+    Default = VisualConfig.MaxDistance,
+    Min = 100,
+    Max = 5000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        VisualConfig.MaxDistance = Value
+    end
+})
+
 -- Settings Tab
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
 
@@ -515,6 +1055,17 @@ MenuBox:AddButton("Unload", function()
     uiLoaded = false
     pcall(function() fovCircle:Remove() end)
     pcall(function() tracerLine:Remove() end)
+    if renderSteppedConn then
+        pcall(function() renderSteppedConn:Disconnect() end)
+        renderSteppedConn = nil
+    end
+    for _, conn in ipairs(playerConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    playerConnections = {}
+    for player in pairs(espObjects) do
+        removeEsp(player)
+    end
     Library:Unload()
 end)
 
