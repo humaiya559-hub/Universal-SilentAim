@@ -15,8 +15,10 @@ local GetMouseLocation = UserInputService.GetMouseLocation
 -- Configuration
 local Configuration = {
     Enabled = true,
+    MagicBullet = false,
+    TeamCheck = false,
     TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
-    RaycastMethod = "Automatic", -- "Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"
+    RaycastMethod = "Automatic", -- "Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse"
     ShowFOV = true,
     FOVRadius = 120,
     ShowTracer = false
@@ -47,6 +49,10 @@ local function getClosestTargetPart()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
+            if Configuration.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+                continue
+            end
+
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             local partName = Configuration.TargetPart
             if partName == "Random" then
@@ -113,7 +119,13 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             if typeof(origin) == "Vector3" then
                 local target = getClosestTargetPart()
                 if target then
-                    args[2] = (target.Position - origin).Unit * 1000
+                    if Configuration.MagicBullet then
+                        local dir = (target.Position - origin).Unit
+                        args[1] = target.Position - (dir * 0.2)
+                        args[2] = dir * 10
+                    else
+                        args[2] = (target.Position - origin).Unit * 1000
+                    end
                     setnamecallmethod(method)
                     return oldNamecall(self, unpack(args))
                 end
@@ -123,7 +135,12 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             if typeof(ray) == "Ray" then
                 local target = getClosestTargetPart()
                 if target then
-                    args[1] = Ray.new(ray.Origin, (target.Position - ray.Origin).Unit * 1000)
+                    if Configuration.MagicBullet then
+                        local dir = (target.Position - ray.Origin).Unit
+                        args[1] = Ray.new(target.Position - (dir * 0.2), dir * 10)
+                    else
+                        args[1] = Ray.new(ray.Origin, (target.Position - ray.Origin).Unit * 1000)
+                    end
                     setnamecallmethod(method)
                     return oldNamecall(self, unpack(args))
                 end
@@ -139,7 +156,7 @@ end))
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
     local isAuto = Configuration.RaycastMethod == "Automatic"
-    if Configuration.Enabled and not checkcaller() and (isAuto or Configuration.RaycastMethod == "Mouse.Hit/Target") and self == Mouse then
+    if Configuration.Enabled and not checkcaller() and (isAuto or Configuration.RaycastMethod == "Mouse") and self == Mouse then
         local target = getClosestTargetPart()
         if target then
             if index == "Hit" or index == "hit" then
@@ -175,9 +192,12 @@ local Tabs = {
     Settings = Window:AddTab("Settings")
 }
 
--- Silent Groupbox
-local SilentGroup = Tabs.Main:AddLeftGroupbox("Silent")
+-- Silent Tabbox (with Silent and Checks subtabs)
+local SilentTabbox = Tabs.Main:AddLeftTabbox("Silent")
+local SilentGroup = SilentTabbox:AddTab("Silent")
+local ChecksGroup = SilentTabbox:AddTab("Checks")
 
+-- Silent Subtab elements
 SilentGroup:AddToggle("SilentAimEnabled", {
     Text = "Enabled",
     Default = Configuration.Enabled,
@@ -194,6 +214,15 @@ SilentGroup:AddToggle("SilentAimEnabled", {
     NoUI = false
 })
 
+SilentGroup:AddToggle("MagicBulletEnabled", {
+    Text = "Magic Bullet",
+    Default = Configuration.MagicBullet,
+    Tooltip = "Allows projectiles to penetrate structures and reach targets directly",
+    Callback = function(Value)
+        Configuration.MagicBullet = Value
+    end
+})
+
 SilentGroup:AddDropdown("TargetPartDropdown", {
     Values = {"Head", "HumanoidRootPart", "Random"},
     Default = 1,
@@ -206,13 +235,23 @@ SilentGroup:AddDropdown("TargetPartDropdown", {
 })
 
 SilentGroup:AddDropdown("RaycastMethodDropdown", {
-    Values = {"Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"},
+    Values = {"Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse"},
     Default = 1,
     Multi = false,
     Text = "Raycast Method",
     Tooltip = "Engine raycast/query method to intercept",
     Callback = function(Value)
         Configuration.RaycastMethod = Value
+    end
+})
+
+-- Checks Subtab elements
+ChecksGroup:AddToggle("TeamCheckToggle", {
+    Text = "Team Check",
+    Default = Configuration.TeamCheck,
+    Tooltip = "Prevents targeting teammates",
+    Callback = function(Value)
+        Configuration.TeamCheck = Value
     end
 })
 
