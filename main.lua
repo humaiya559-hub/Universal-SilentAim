@@ -16,7 +16,7 @@ local GetMouseLocation = UserInputService.GetMouseLocation
 local Configuration = {
     Enabled = true,
     TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
-    RaycastMethod = "Raycast", -- "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"
+    RaycastMethod = "Automatic", -- "Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"
     ShowFOV = true,
     FOVRadius = 120,
     ShowTracer = false
@@ -107,7 +107,8 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local args = {...}
 
     if Configuration.Enabled and self == workspace and not checkcaller() then
-        if method == "Raycast" and Configuration.RaycastMethod == "Raycast" then
+        local isAuto = Configuration.RaycastMethod == "Automatic"
+        if (isAuto or Configuration.RaycastMethod == "Raycast") and method == "Raycast" then
             local origin = args[1]
             if typeof(origin) == "Vector3" then
                 local target = getClosestTargetPart()
@@ -117,7 +118,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     return oldNamecall(self, unpack(args))
                 end
             end
-        elseif (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist") and Configuration.RaycastMethod == method then
+        elseif (isAuto or Configuration.RaycastMethod == method) and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist") then
             local ray = args[1]
             if typeof(ray) == "Ray" then
                 local target = getClosestTargetPart()
@@ -137,7 +138,8 @@ end))
 -- Metamethod Hook: __index
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
-    if Configuration.Enabled and not checkcaller() and Configuration.RaycastMethod == "Mouse.Hit/Target" and self == Mouse then
+    local isAuto = Configuration.RaycastMethod == "Automatic"
+    if Configuration.Enabled and not checkcaller() and (isAuto or Configuration.RaycastMethod == "Mouse.Hit/Target") and self == Mouse then
         local target = getClosestTargetPart()
         if target then
             if index == "Hit" or index == "hit" then
@@ -204,7 +206,7 @@ SilentGroup:AddDropdown("TargetPartDropdown", {
 })
 
 SilentGroup:AddDropdown("RaycastMethodDropdown", {
-    Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"},
+    Values = {"Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse.Hit/Target"},
     Default = 1,
     Multi = false,
     Text = "Raycast Method",
