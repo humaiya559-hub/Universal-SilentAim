@@ -19,10 +19,56 @@ local Configuration = {
     TeamCheck = false,
     TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
     RaycastMethod = "Automatic", -- "Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse"
+    Include = { Character = true, Camera = true },
+    Origin = { Camera = true },
     ShowFOV = true,
     FOVRadius = 120,
     ShowTracer = false
 }
+
+local function normalizeSelection(selection)
+    if not selection then
+        return {}
+    end
+
+    local normalized = {}
+
+    if type(selection) ~= "table" then
+        normalized[selection] = true
+        return normalized
+    end
+
+    local hasNumericKeys = false
+    for key in pairs(selection) do
+        if type(key) == "number" then
+            hasNumericKeys = true
+            break
+        end
+    end
+
+    if hasNumericKeys then
+        for _, value in ipairs(selection) do
+            normalized[value] = true
+        end
+    else
+        for key, value in pairs(selection) do
+            if type(key) == "string" then
+                if value == true or type(value) == "string" then
+                    normalized[key] = true
+                end
+            end
+        end
+    end
+
+    return normalized
+end
+
+local function isSelectionActive(selection, option)
+    return selection and selection[option] or false
+end
+
+Configuration.Include = normalizeSelection(Configuration.Include)
+Configuration.Origin = normalizeSelection(Configuration.Origin)
 
 -- Visual FOV circle using Drawing API
 local fovCircle = Drawing.new("Circle")
@@ -106,6 +152,32 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+local function getIgnoredList(method, args)
+    if method == "Raycast" then
+        local params = args[3]
+        if typeof(params) == "RaycastParams" then
+            return params.FilterDescendantsInstances
+        end
+    elseif method == "FindPartOnRayWithIgnoreList" then
+        return args[2]
+    end
+    return nil
+end
+
+local function getOriginalOrigin(method, args)
+    if method == "Raycast" then
+        if typeof(args[1]) == "Vector3" then
+            return args[1]
+        end
+    elseif method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "FindPartOnRay" or method == "findPartOnRay" then
+        local ray = args[1]
+        if typeof(ray) == "Ray" then
+            return ray.Origin
+        end
+    end
+    return nil
+end
+
 -- Metamethod Hook: __namecall
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -113,6 +185,36 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local args = {...}
 
     if Configuration.Enabled and self == workspace and not checkcaller() then
+        local originOptions = Configuration.Origin
+        local includeOptions = Configuration.Include
+        local originalOrigin = getOriginalOrigin(method, args)
+        local ignoredList = getIgnoredList(method, args)
+
+        if originalOrigin and originOptions and next(originOptions) then
+            local matchesOrigin = false
+            if isSelectionActive(originOptions, "Camera") then
+                local camPos = Camera.CFrame.Position
+                if (originalOrigin - camPos).Magnitude < 0.1 or originalOrigin == camPos then
+                    matchesOrigin = true
+                end
+            end
+            if not matchesOrigin then
+                setnamecallmethod(method)
+                return oldNamecall(self, ...)
+            end
+        end
+
+        if ignoredList and includeOptions and next(includeOptions) then
+            if isSelectionActive(includeOptions, "Camera") and not table.find(ignoredList, Camera) then
+                setnamecallmethod(method)
+                return oldNamecall(self, ...)
+            end
+            local character = LocalPlayer.Character
+            if character and isSelectionActive(includeOptions, "Character") and not table.find(ignoredList, character) then
+                setnamecallmethod(method)
+                return oldNamecall(self, ...)
+            end
+        end
         local isAuto = Configuration.RaycastMethod == "Automatic"
         if (isAuto or Configuration.RaycastMethod == "Raycast") and method == "Raycast" then
             local origin = args[1]
@@ -242,6 +344,30 @@ SilentGroup:AddDropdown("RaycastMethodDropdown", {
     Tooltip = "Engine raycast/query method to intercept",
     Callback = function(Value)
         Configuration.RaycastMethod = Value
+    end
+})
+
+SilentGroup:AddDropdown("IncludeDropdown", {
+    AllowNull = true,
+    Multi = true,
+    Text = "Include",
+    Default = Configuration.Include,
+    Values = {"Camera", "Character"},
+    Tooltip = "Includes these objects in the ignore list",
+    Callback = function(Value)
+        Configuration.Include = normalizeSelection(Value)
+    end
+})
+
+SilentGroup:AddDropdown("OriginDropdown", {
+    AllowNull = true,
+    Multi = true,
+    Text = "Origin",
+    Default = Configuration.Origin,
+    Values = {"Camera"},
+    Tooltip = "Sets the origin of the bullet/ray",
+    Callback = function(Value)
+        Configuration.Origin = normalizeSelection(Value)
     end
 })
 
