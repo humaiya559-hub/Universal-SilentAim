@@ -15,7 +15,7 @@ local GetMouseLocation = UserInputService.GetMouseLocation
 -- Configuration
 local Configuration = {
     Enabled = true,
-    MagicBullet = false,
+    BulletPenetration = false,
     TeamCheck = false,
     TargetPart = "Head", -- "Head", "HumanoidRootPart", or "Random"
     RaycastMethod = "Automatic", -- "Automatic", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist", "Mouse"
@@ -119,7 +119,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             if typeof(origin) == "Vector3" then
                 local target = getClosestTargetPart()
                 if target then
-                    if Configuration.MagicBullet then
+                    if Configuration.BulletPenetration then
                         local dir = (target.Position - origin).Unit
                         args[1] = target.Position - (dir * 0.2)
                         args[2] = dir * 10
@@ -135,7 +135,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             if typeof(ray) == "Ray" then
                 local target = getClosestTargetPart()
                 if target then
-                    if Configuration.MagicBullet then
+                    if Configuration.BulletPenetration then
                         local dir = (target.Position - ray.Origin).Unit
                         args[1] = Ray.new(target.Position - (dir * 0.2), dir * 10)
                     else
@@ -214,12 +214,12 @@ SilentGroup:AddToggle("SilentAimEnabled", {
     NoUI = false
 })
 
-SilentGroup:AddToggle("MagicBulletEnabled", {
-    Text = "Magic Bullet",
-    Default = Configuration.MagicBullet,
+SilentGroup:AddToggle("BulletPenetrationEnabled", {
+    Text = "Bullet Penetration",
+    Default = Configuration.BulletPenetration,
     Tooltip = "Allows projectiles to penetrate structures and reach targets directly",
     Callback = function(Value)
-        Configuration.MagicBullet = Value
+        Configuration.BulletPenetration = Value
     end
 })
 
