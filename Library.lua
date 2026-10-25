@@ -2106,6 +2106,7 @@ do
             BackgroundColor3 = Library.MainColor;
             BorderSizePixel = 0;
             Size = UDim2.new(1, 0, 1, 0);
+            ClipsDescendants = true;
             ZIndex = 6;
             Parent = SliderOuter;
         });
@@ -2124,22 +2125,7 @@ do
             Parent = SliderInner;
         });
 
-        Library:Round(Fill, 3);
-
         Library:AddToRegistry(Fill, {
-            BackgroundColor3 = 'AccentColor';
-        });
-
-        local HideBorderRight = Library:Create('Frame', {
-            BackgroundColor3 = Library.AccentColor;
-            BorderSizePixel = 0;
-            Position = UDim2.new(1, 0, 0, 0);
-            Size = UDim2.new(0, 1, 1, 0);
-            ZIndex = 8;
-            Parent = Fill;
-        });
-
-        Library:AddToRegistry(HideBorderRight, {
             BackgroundColor3 = 'AccentColor';
         });
 
@@ -2162,7 +2148,6 @@ do
 
         function Slider:UpdateColors()
             Fill.BackgroundColor3 = Library.AccentColor;
-            Fill.BorderColor3 = Library.AccentColorDark;
         end;
 
         function Slider:Display()
@@ -2178,8 +2163,6 @@ do
 
             local X = math.ceil(Library:MapValue(Slider.Value, Slider.Min, Slider.Max, 0, Slider.MaxSize));
             Fill.Size = UDim2.new(0, X, 1, 0);
-
-            HideBorderRight.Visible = not (X == Slider.MaxSize or X == 0);
         end;
 
         function Slider:OnChanged(Func)
@@ -3127,19 +3110,13 @@ function Library:CreateWindow(...)
         BorderSizePixel = 0;
         Position = UDim2.new(0, 8, 0, 25);
         Size = UDim2.new(1, -16, 1, -33);
+        BackgroundTransparency = 1;
         ZIndex = 1;
         Parent = Inner;
     });
 
-    Library:Round(MainSectionOuter, 6);
-    Library:ApplyStroke(MainSectionOuter, 'OutlineColor', 1);
-
-    Library:AddToRegistry(MainSectionOuter, {
-        BackgroundColor3 = 'BackgroundColor';
-    });
-
     local MainSectionInner = Library:Create('Frame', {
-        BackgroundColor3 = Library.BackgroundColor;
+        BackgroundTransparency = 1;
         BorderSizePixel = 0;
         Position = UDim2.new(0, 0, 0, 0);
         Size = UDim2.new(1, 0, 1, 0);
@@ -3147,15 +3124,10 @@ function Library:CreateWindow(...)
         Parent = MainSectionOuter;
     });
 
-    Library:Round(MainSectionInner, 6);
-    Library:AddToRegistry(MainSectionInner, {
-        BackgroundColor3 = 'BackgroundColor';
-    });
-
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        Position = UDim2.new(0, 8, 0, 8);
-        Size = UDim2.new(1, -16, 0, 24);
+        Position = UDim2.new(0, 0, 0, 4);
+        Size = UDim2.new(1, 0, 0, 24);
         ZIndex = 1;
         Parent = MainSectionInner;
     });
@@ -3170,8 +3142,8 @@ function Library:CreateWindow(...)
     local TabContainer = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderSizePixel = 0;
-        Position = UDim2.new(0, 8, 0, 34);
-        Size = UDim2.new(1, -16, 1, -42);
+        Position = UDim2.new(0, 0, 0, 34);
+        Size = UDim2.new(1, 0, 1, -34);
         ZIndex = 2;
         Parent = MainSectionInner;
     });
@@ -3198,13 +3170,13 @@ function Library:CreateWindow(...)
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderSizePixel = 0;
-            Size = UDim2.new(0, TabButtonWidth + 12, 1, 0);
+            Size = UDim2.new(0, TabButtonWidth + 14, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
         });
 
         Library:Round(TabButton, 4);
-        Library:ApplyStroke(TabButton, 'OutlineColor', 1);
+        local TabButtonStroke = Library:ApplyStroke(TabButton, 'OutlineColor', 1);
 
         Library:AddToRegistry(TabButton, {
             BackgroundColor3 = 'BackgroundColor';
@@ -3214,22 +3186,9 @@ function Library:CreateWindow(...)
             Position = UDim2.new(0, 0, 0, 0);
             Size = UDim2.new(1, 0, 1, 0);
             Text = Name;
+            TextSize = 14;
             ZIndex = 1;
             Parent = TabButton;
-        });
-
-        local Blocker = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
-            BorderSizePixel = 0;
-            Position = UDim2.new(0, 0, 1, 0);
-            Size = UDim2.new(1, 0, 0, 1);
-            BackgroundTransparency = 1;
-            ZIndex = 3;
-            Parent = TabButton;
-        });
-
-        Library:AddToRegistry(Blocker, {
-            BackgroundColor3 = 'MainColor';
         });
 
         local TabFrame = Library:Create('Frame', {
@@ -3245,8 +3204,8 @@ function Library:CreateWindow(...)
         local LeftSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Position = UDim2.new(0, 8, 0, 8);
+            Size = UDim2.new(0.5, -12, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3258,8 +3217,8 @@ function Library:CreateWindow(...)
         local RightSide = Library:Create('ScrollingFrame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
-            Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 0, 507 + 2);
+            Position = UDim2.new(0.5, 4, 0, 8);
+            Size = UDim2.new(0.5, -12, 1, -16);
             CanvasSize = UDim2.new(0, 0, 0, 0);
             BottomImage = '';
             TopImage = '';
@@ -3295,16 +3254,16 @@ function Library:CreateWindow(...)
                 Tab:HideTab();
             end;
 
-            Blocker.BackgroundTransparency = 0;
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
+            TabButtonStroke.Color = Library.AccentColor;
             TabFrame.Visible = true;
         end;
 
         function Tab:HideTab()
-            Blocker.BackgroundTransparency = 1;
             TabButton.BackgroundColor3 = Library.BackgroundColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'BackgroundColor';
+            TabButtonStroke.Color = Library.OutlineColor;
             TabFrame.Visible = false;
         end;
 
@@ -3349,7 +3308,8 @@ function Library:CreateWindow(...)
             local Highlight = Library:Create('Frame', {
                 BackgroundColor3 = Library.AccentColor;
                 BorderSizePixel = 0;
-                Size = UDim2.new(1, 0, 0, 2);
+                Position = UDim2.new(0, 4, 0, 0);
+                Size = UDim2.new(1, -8, 0, 2);
                 ZIndex = 5;
                 Parent = BoxInner;
             });
@@ -3453,10 +3413,13 @@ function Library:CreateWindow(...)
             local Highlight = Library:Create('Frame', {
                 BackgroundColor3 = Library.AccentColor;
                 BorderSizePixel = 0;
-                Size = UDim2.new(1, 0, 0, 2);
+                Position = UDim2.new(0, 4, 0, 0);
+                Size = UDim2.new(1, -8, 0, 2);
                 ZIndex = 10;
                 Parent = BoxInner;
             });
+
+            Library:Round(Highlight, 2);
 
             Library:AddToRegistry(Highlight, {
                 BackgroundColor3 = 'AccentColor';
