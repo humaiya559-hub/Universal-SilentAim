@@ -1575,7 +1575,7 @@ do
 
             Library:OnHighlight(Outer, Outer,
                 { BorderColor3 = 'AccentColor' },
-                { BorderColor3 = 'Black' }
+                { BorderColor3 = 'OutlineColor' }
             );
 
             return Outer, Inner, Label
@@ -1784,7 +1784,7 @@ do
 
         Library:OnHighlight(TextBoxOuter, TextBoxOuter,
             { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
+            { BorderColor3 = 'OutlineColor' }
         );
 
         if type(Info.Tooltip) == 'string' then
@@ -1987,7 +1987,7 @@ do
 
         Library:OnHighlight(ToggleRegion, ToggleOuter,
             { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
+            { BorderColor3 = 'OutlineColor' }
         );
 
         function Toggle:UpdateColors()
@@ -2141,7 +2141,7 @@ do
 
         Library:OnHighlight(SliderOuter, SliderOuter,
             { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
+            { BorderColor3 = 'OutlineColor' }
         );
 
         if type(Info.Tooltip) == 'string' then
@@ -3098,8 +3098,20 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'MainColor';
     });
 
+    local TitleDot = Library:Create('Frame', {
+        BackgroundColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, 10, 0, 9);
+        Size = UDim2.new(0, 7, 0, 7);
+        ZIndex = 2;
+        Parent = Inner;
+    });
+
+    Library:Round(TitleDot, 4);
+    Library:AddToRegistry(TitleDot, { BackgroundColor3 = 'AccentColor' });
+
     local WindowLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 10, 0, 0);
+        Position = UDim2.new(0, 24, 0, 0);
         Size = UDim2.new(0, 0, 0, 25);
         Text = Config.Title or '';
         TextXAlignment = Enum.TextXAlignment.Left;
@@ -3259,6 +3271,7 @@ function Library:CreateWindow(...)
             TabButton.BackgroundColor3 = Library.MainColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
             TabButtonStroke.Color = Library.AccentColor;
+            TabButtonLabel.TextColor3 = Library.FontColor;
             TabFrame.Visible = true;
         end;
 
@@ -3266,6 +3279,7 @@ function Library:CreateWindow(...)
             TabButton.BackgroundColor3 = Library.BackgroundColor;
             Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'BackgroundColor';
             TabButtonStroke.Color = Library.OutlineColor;
+            TabButtonLabel.TextColor3 = Color3.fromRGB(150, 150, 165);
             TabFrame.Visible = false;
         end;
 
@@ -3308,8 +3322,8 @@ function Library:CreateWindow(...)
             });
 
             local GroupboxLabel = Library:CreateLabel({
-                Size = UDim2.new(1, 0, 0, 18);
-                Position = UDim2.new(0, 4, 0, 2);
+                Size = UDim2.new(1, -12, 0, 18);
+                Position = UDim2.new(0, 6, 0, 4);
                 TextSize = 14;
                 Text = Info.Name;
                 TextXAlignment = Enum.TextXAlignment.Left;
@@ -3319,13 +3333,14 @@ function Library:CreateWindow(...)
 
             local Container = Library:Create('Frame', {
                 BackgroundTransparency = 1;
-                Position = UDim2.new(0, 4, 0, 20);
-                Size = UDim2.new(1, -4, 1, -20);
+                Position = UDim2.new(0, 4, 0, 24);
+                Size = UDim2.new(1, -4, 1, -24);
                 ZIndex = 1;
                 Parent = BoxInner;
             });
 
             Library:Create('UIListLayout', {
+                Padding = UDim.new(0, 8);
                 FillDirection = Enum.FillDirection.Vertical;
                 SortOrder = Enum.SortOrder.LayoutOrder;
                 Parent = Container;
@@ -3340,7 +3355,7 @@ function Library:CreateWindow(...)
                     end;
                 end;
 
-                BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
+                BoxOuter.Size = UDim2.new(1, 0, 0, 24 + Size + 2 + 2);
             end;
 
             Groupbox.Container = Container;
@@ -3465,6 +3480,7 @@ function Library:CreateWindow(...)
                     Button.BackgroundColor3 = Library.BackgroundColor;
                     Library.RegistryMap[Button].Properties.BackgroundColor3 = 'BackgroundColor';
                     ButtonStroke.Color = Library.AccentColor;
+                    ButtonLabel.TextColor3 = Library.FontColor;
 
                     Tab:Resize();
                 end;
@@ -3475,6 +3491,7 @@ function Library:CreateWindow(...)
                     Button.BackgroundColor3 = Library.MainColor;
                     Library.RegistryMap[Button].Properties.BackgroundColor3 = 'MainColor';
                     ButtonStroke.Color = Library.OutlineColor;
+                    ButtonLabel.TextColor3 = Color3.fromRGB(150, 150, 165);
                 end;
 
                 function Tab:Resize()

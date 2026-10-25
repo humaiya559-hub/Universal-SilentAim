@@ -70,13 +70,15 @@ end
 Configuration.Include = normalizeSelection(Configuration.Include)
 Configuration.Origin = normalizeSelection(Configuration.Origin)
 
+local uiLoaded = false
+
 -- Visual FOV circle using Drawing API
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 1
 fovCircle.NumSides = 64
 fovCircle.Radius = Configuration.FOVRadius
 fovCircle.Filled = false
-fovCircle.Visible = Configuration.ShowFOV and Configuration.Enabled
+fovCircle.Visible = false
 fovCircle.Transparency = 1
 fovCircle.Color = Color3.fromRGB(255, 255, 255)
 
@@ -125,6 +127,12 @@ end
 
 -- Update visuals per frame
 RunService.RenderStepped:Connect(function()
+    if not uiLoaded then
+        fovCircle.Visible = false
+        tracerLine.Visible = false
+        return
+    end
+
     local mousePos = GetMouseLocation(UserInputService)
     
     -- FOV circle update
@@ -430,6 +438,7 @@ FOVGroup:AddToggle("ShowTracerToggle", {
 local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
 
 MenuBox:AddButton("Unload", function()
+    uiLoaded = false
     pcall(function() fovCircle:Remove() end)
     pcall(function() tracerLine:Remove() end)
     Library:Unload()
@@ -441,5 +450,10 @@ MenuBox:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
     Text = "Menu keybind"
 })
 Library.ToggleKeybind = Options.MenuKeybind
+
+uiLoaded = true
+if Configuration.ShowFOV and Configuration.Enabled then
+    fovCircle.Visible = true
+end
 
 Library:Notify("Universal Silent Aim loaded successfully.")
