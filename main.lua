@@ -26,6 +26,15 @@ local Configuration = {
     ShowTracer = false
 }
 
+-- Gun Modifications Configuration
+local GunMods = {
+    NoRecoil = false,
+    NoSpread = false,
+    AlwaysAuto = false,
+    RapidFire = false,
+    InfiniteAmmo = false
+}
+
 -- Visuals Configuration
 local VisualConfig = {
     Enabled = false,
@@ -532,6 +541,196 @@ renderSteppedConn = RunService.RenderStepped:Connect(function()
     updateEsp()
 end)
 
+-- Gun Modifications: Tool and Table Modifier Functions
+local function modifyToolInstances(tool)
+    if not tool or not tool:IsA("Tool") then return end
+
+    pcall(function()
+        -- Modify Attributes
+        for name, value in pairs(tool:GetAttributes()) do
+            local lower = string.lower(name)
+            if GunMods.NoRecoil and (string.find(lower, "recoil") or string.find(lower, "shake")) then
+                tool:SetAttribute(name, 0)
+            end
+            if GunMods.NoSpread and string.find(lower, "spread") then
+                tool:SetAttribute(name, 0)
+            end
+            if GunMods.AlwaysAuto and (string.find(lower, "auto") or lower == "mode") then
+                if type(value) == "boolean" then
+                    tool:SetAttribute(name, true)
+                elseif type(value) == "string" then
+                    tool:SetAttribute(name, "Auto")
+                end
+            end
+            if GunMods.InfiniteAmmo and string.find(lower, "ammo") then
+                if type(value) == "number" then
+                    tool:SetAttribute(name, 999)
+                end
+            end
+        end
+
+        -- Modify Descendant Values
+        for _, desc in ipairs(tool:GetDescendants()) do
+            local lower = string.lower(desc.Name)
+            if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+                if GunMods.NoRecoil and (string.find(lower, "recoil") or string.find(lower, "shake")) then
+                    desc.Value = 0
+                end
+                if GunMods.NoSpread and string.find(lower, "spread") then
+                    desc.Value = 0
+                end
+                if GunMods.InfiniteAmmo and string.find(lower, "ammo") then
+                    desc.Value = 999
+                end
+            elseif desc:IsA("BoolValue") then
+                if GunMods.AlwaysAuto and string.find(lower, "auto") then
+                    desc.Value = true
+                end
+            elseif desc:IsA("StringValue") then
+                if GunMods.AlwaysAuto and (string.find(lower, "mode") or string.find(lower, "firemode")) then
+                    desc.Value = "Auto"
+                end
+            end
+        end
+    end)
+end
+
+local function scanAndModifyGunTables()
+    if not getgc then return end
+    pcall(function()
+        for _, tbl in ipairs(getgc(true)) do
+            if type(tbl) == "table" then
+                local isFrozen = (table.isfrozen and table.isfrozen(tbl)) or false
+                if not isFrozen then
+                    if GunMods.NoRecoil then
+                        if rawget(tbl, "Recoil") ~= nil then
+                            if type(tbl.Recoil) == "number" then
+                                tbl.Recoil = 0
+                            elseif type(tbl.Recoil) == "table" then
+                                for k, v in pairs(tbl.Recoil) do
+                                    if type(v) == "number" then tbl.Recoil[k] = 0 end
+                                end
+                            end
+                        end
+                        if rawget(tbl, "recoil") ~= nil and type(tbl.recoil) == "number" then
+                            tbl.recoil = 0
+                        end
+                        if rawget(tbl, "CamRecoil") ~= nil then tbl.CamRecoil = 0 end
+                        if rawget(tbl, "CameraRecoil") ~= nil then tbl.CameraRecoil = 0 end
+                    end
+
+                    if GunMods.NoSpread then
+                        if rawget(tbl, "Spread") ~= nil and type(tbl.Spread) == "number" then
+                            tbl.Spread = 0
+                        end
+                        if rawget(tbl, "spread") ~= nil and type(tbl.spread) == "number" then
+                            tbl.spread = 0
+                        end
+                        if rawget(tbl, "MinSpread") ~= nil then tbl.MinSpread = 0 end
+                        if rawget(tbl, "MaxSpread") ~= nil then tbl.MaxSpread = 0 end
+                    end
+
+                    if GunMods.AlwaysAuto then
+                        if rawget(tbl, "Auto") ~= nil and type(tbl.Auto) == "boolean" then
+                            tbl.Auto = true
+                        end
+                        if rawget(tbl, "Automatic") ~= nil and type(tbl.Automatic) == "boolean" then
+                            tbl.Automatic = true
+                        end
+                        if rawget(tbl, "Mode") ~= nil and type(tbl.Mode) == "string" then
+                            tbl.Mode = "Auto"
+                        end
+                    end
+
+                    if GunMods.InfiniteAmmo then
+                        if rawget(tbl, "Ammo") ~= nil and type(tbl.Ammo) == "number" and tbl.Ammo < 999 then
+                            tbl.Ammo = 999
+                        end
+                        if rawget(tbl, "ClipSize") ~= nil and type(tbl.ClipSize) == "number" and tbl.ClipSize < 999 then
+                            tbl.ClipSize = 999
+                        end
+                        if rawget(tbl, "MaxAmmo") ~= nil and type(tbl.MaxAmmo) == "number" and tbl.MaxAmmo < 999 then
+                            tbl.MaxAmmo = 999
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function updateGunMods()
+    local character = LocalPlayer.Character
+    if character then
+        local tool = character:FindFirstChildWhichIsA("Tool")
+        if tool then
+            modifyToolInstances(tool)
+        end
+    end
+    scanAndModifyGunTables()
+end
+
+-- Automatic rapid fire and ammo hold loop
+local lastRapidFire = 0
+local gunModHeartbeatConn
+gunModHeartbeatConn = RunService.Heartbeat:Connect(function()
+    if not uiLoaded then return end
+
+    if (GunMods.AlwaysAuto or GunMods.RapidFire) and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local character = LocalPlayer.Character
+        local tool = character and character:FindFirstChildWhichIsA("Tool")
+        if tool then
+            local now = os.clock()
+            local delay = GunMods.RapidFire and 0.03 or 0.1
+            if now - lastRapidFire >= delay then
+                lastRapidFire = now
+                pcall(function()
+                    tool:Activate()
+                end)
+            end
+        end
+    end
+
+    if GunMods.InfiniteAmmo then
+        local character = LocalPlayer.Character
+        local tool = character and character:FindFirstChildWhichIsA("Tool")
+        if tool then
+            for _, desc in ipairs(tool:GetDescendants()) do
+                if (desc:IsA("IntValue") or desc:IsA("NumberValue")) and string.find(string.lower(desc.Name), "ammo") then
+                    if desc.Value < 999 then
+                        desc.Value = 999
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Tool equipped listener for gun modifications
+local function onCharacterAdded(character)
+    if not character then return end
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            task.wait(0.1)
+            modifyToolInstances(child)
+            scanAndModifyGunTables()
+        end
+    end)
+    local tool = character:FindFirstChildWhichIsA("Tool")
+    if tool then
+        task.spawn(function()
+            task.wait(0.1)
+            modifyToolInstances(tool)
+            scanAndModifyGunTables()
+        end)
+    end
+end
+
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
 -- Automatic method resolution state and helpers
 local detectedMethod = nil
 local lastRaycastTime = 0
@@ -699,6 +898,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                         end
                         setnamecallmethod(method)
                         return oldNamecall(self, unpack(args))
+                    elseif GunMods.NoSpread then
+                        args[2] = currentCam.CFrame.LookVector * direction.Magnitude
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
                     end
                 end
             end
@@ -726,6 +929,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                         else
                             args[3] = (target.Position - origin).Unit * 1000
                         end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    elseif GunMods.NoSpread then
+                        args[3] = currentCam.CFrame.LookVector * direction.Magnitude
                         setnamecallmethod(method)
                         return oldNamecall(self, unpack(args))
                     end
@@ -758,6 +965,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                         end
                         setnamecallmethod(method)
                         return oldNamecall(self, unpack(args))
+                    elseif GunMods.NoSpread then
+                        args[3] = currentCam.CFrame.LookVector * direction.Magnitude
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
                     end
                 end
             end
@@ -786,6 +997,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                         end
                         setnamecallmethod(method)
                         return oldNamecall(self, unpack(args))
+                    elseif GunMods.NoSpread then
+                        args[1] = Ray.new(origin, currentCam.CFrame.LookVector * direction.Magnitude)
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
                     end
                 end
             end
@@ -808,6 +1023,9 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 else
                     return Ray.new(camPos, (target.Position - camPos).Unit * 1000)
                 end
+            elseif GunMods.NoSpread then
+                local camPos = currentCam.CFrame.Position
+                return Ray.new(camPos, currentCam.CFrame.LookVector * 1000)
             end
 
         -- Camera:ScreenPointToRay
@@ -826,6 +1044,9 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 else
                     return Ray.new(camPos, (target.Position - camPos).Unit * 1000)
                 end
+            elseif GunMods.NoSpread then
+                local camPos = currentCam.CFrame.Position
+                return Ray.new(camPos, currentCam.CFrame.LookVector * 1000)
             end
 
         -- Camera:Raycast
@@ -850,6 +1071,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                         else
                             args[2] = (target.Position - origin).Unit * 1000
                         end
+                        setnamecallmethod(method)
+                        return oldNamecall(self, unpack(args))
+                    elseif GunMods.NoSpread then
+                        args[2] = currentCam.CFrame.LookVector * direction.Magnitude
                         setnamecallmethod(method)
                         return oldNamecall(self, unpack(args))
                     end
@@ -1066,6 +1291,58 @@ FOVGroup:AddToggle("ShowTracerToggle", {
     end
 })
 
+-- Gun Modifications Groupbox
+local GunModsGroup = Tabs.Main:AddRightGroupbox("Gun Modifications")
+
+GunModsGroup:AddToggle("NoRecoilToggle", {
+    Text = "No Recoil",
+    Default = GunMods.NoRecoil,
+    Tooltip = "Removes weapon recoil and camera shake",
+    Callback = function(Value)
+        GunMods.NoRecoil = Value
+        updateGunMods()
+    end
+})
+
+GunModsGroup:AddToggle("NoSpreadToggle", {
+    Text = "No Spread",
+    Default = GunMods.NoSpread,
+    Tooltip = "Removes bullet spread for laser-straight accuracy",
+    Callback = function(Value)
+        GunMods.NoSpread = Value
+        updateGunMods()
+    end
+})
+
+GunModsGroup:AddToggle("AlwaysAutoToggle", {
+    Text = "Always Automatic",
+    Default = GunMods.AlwaysAuto,
+    Tooltip = "Enables continuous fire on semi-automatic weapons",
+    Callback = function(Value)
+        GunMods.AlwaysAuto = Value
+        updateGunMods()
+    end
+})
+
+GunModsGroup:AddToggle("RapidFireToggle", {
+    Text = "Rapid Fire",
+    Default = GunMods.RapidFire,
+    Tooltip = "Significantly increases firing speed while holding mouse button",
+    Callback = function(Value)
+        GunMods.RapidFire = Value
+    end
+})
+
+GunModsGroup:AddToggle("InfiniteAmmoToggle", {
+    Text = "Infinite Ammo",
+    Default = GunMods.InfiniteAmmo,
+    Tooltip = "Maintains maximum ammo on supported weapon systems",
+    Callback = function(Value)
+        GunMods.InfiniteAmmo = Value
+        updateGunMods()
+    end
+})
+
 -- Visuals Tab: ESP Left Groupbox
 local ESPBox = Tabs.Visuals:AddLeftGroupbox("ESP")
 
@@ -1166,6 +1443,10 @@ MenuBox:AddButton("Unload", function()
     if renderSteppedConn then
         pcall(function() renderSteppedConn:Disconnect() end)
         renderSteppedConn = nil
+    end
+    if gunModHeartbeatConn then
+        pcall(function() gunModHeartbeatConn:Disconnect() end)
+        gunModHeartbeatConn = nil
     end
     for _, conn in ipairs(playerConnections) do
         pcall(function() conn:Disconnect() end)
