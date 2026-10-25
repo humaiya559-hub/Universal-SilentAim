@@ -1944,7 +1944,7 @@ do
         });
 
         Library:Round(ToggleOuter, 4);
-        Library:ApplyStroke(ToggleOuter, 'OutlineColor', 1);
+        local ToggleStroke = Library:ApplyStroke(ToggleOuter, 'OutlineColor', 1);
 
         local ToggleInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
@@ -1991,6 +1991,7 @@ do
         );
 
         function Toggle:UpdateColors()
+            ToggleStroke.Color = Library.OutlineColor;
             Toggle:Display();
         end;
 
@@ -2000,10 +2001,9 @@ do
 
         function Toggle:Display()
             ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
-            ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
+            ToggleStroke.Color = Library.OutlineColor;
 
             Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
-            Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
         end;
 
         function Toggle:OnChanged(Func)
@@ -2100,7 +2100,7 @@ do
         });
 
         Library:Round(SliderOuter, 4);
-        Library:ApplyStroke(SliderOuter, 'OutlineColor', 1);
+        local SliderStroke = Library:ApplyStroke(SliderOuter, 'OutlineColor', 1);
 
         local SliderInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
@@ -2150,6 +2150,7 @@ do
 
         function Slider:UpdateColors()
             Fill.BackgroundColor3 = Library.AccentColor;
+            SliderStroke.Color = Library.OutlineColor;
         end;
 
         function Slider:Display()
